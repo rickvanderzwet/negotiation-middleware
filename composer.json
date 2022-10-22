@@ -25,7 +25,7 @@
         "php-coveralls/php-coveralls": "^2.4.3"
     },
     "suggest": {
-        "slim/slim": "The negotiation middleware is compatible to Slim 3.x"
+        "slim/slim": "The negotiation middleware is compatible to Slim 4.x"
     },
 
     "autoload": {

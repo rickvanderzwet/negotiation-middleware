@@ -3,6 +3,10 @@ namespace Gofabian\Negotiation;
 
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ResponseFactoryInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+use Psr\Http\Server\MiddlewareInterface;
+
 use Negotiation\AbstractNegotiator;
 use Negotiation\BaseAccept;
 
@@ -13,9 +17,10 @@ use Negotiation\BaseAccept;
  * contain status 406 "Not Acceptable".
  *
  * @see http://www.php-fig.org/psr/psr-7/
+ * @see http://www.php-fig.org/psr/psr-15/
  * @see https://github.com/willdurand/Negotiation
  */
-class NegotiationMiddleware
+class NegotiationMiddleware implements MiddlewareInterface
 {
     private $configurationFactory;
     private $headerNegotiator;
@@ -27,22 +32,31 @@ class NegotiationMiddleware
     private $encodingConfiguration;
     private $charsetConfiguration;
 
+     /**
+     * @var ResponseFactoryInterface
+     */
+    private $responseFactory;
+
     /**
      * Create a new negotiation middleware.
      *
      * @param $priorities       array   lists of accepted values
+     * @param $responseFactory  ResponseFactoryInterface   PSR-15 response factory
+
      * @param $supplyDefaults   bool    whether default values are supplied
      * @param $attributeName    string  where to store the negotiation result
      */
     public function __construct(
         array $priorities,
+        ResponseFactoryInterface $responseFactory,
         $supplyDefaults = true,
-        $attributeName = 'negotiation'
+        $attributeName = 'negotiation',
     ) {
         $this->configurationFactory = new ConfigurationFactory;
         $this->headerNegotiator = new HeaderNegotiator;
         $this->supplyDefaults = $supplyDefaults;
         $this->attributeName = $attributeName;
+        $this->responseFactory = $responseFactory;
 
         $this->mediaTypeConfiguration = $this->createConfiguration($priorities, 'accept');
         $this->languageConfiguration = $this->createConfiguration($priorities, 'accept-language');
@@ -80,6 +94,26 @@ class NegotiationMiddleware
         $request = $request->withAttribute($this->attributeName, $acceptProvider);
         return $next($request, $response);
     }
+
+    /**
+     * Negotiate the 'accept' headers of the given PSR-7 request. Attach the
+     * negotiation result to the request or respond with 406 "Not Acceptable".
+     *
+     * @param $request      ServerRequestInterface  PSR-7 request (with accept headers)
+     * @param $handler      RequestHandlerInterface PSR-15 request handler
+     * @return              ResponseInterface       PSR-7 response
+     */
+    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface {
+        try {
+            $acceptProvider = $this->negotiateRequest($request);
+        } catch (NegotiationException $e) {
+            return $this->responseFactory->createResponse(406);
+        }
+
+        $response = $handler->handle($request->withAttribute($this->attributeName, $acceptProvider));
+        return $response;
+    }
+
 
     /**
      * Negotiate the PSR-7 request.
